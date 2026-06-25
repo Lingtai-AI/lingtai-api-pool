@@ -8,3 +8,7 @@ build/
 *.egg-info/
 .env
 .secrets/
+.work/
+.ruff_cache/
+.mypy_cache/
+reports/
