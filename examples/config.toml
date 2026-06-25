@@ -1,0 +1,30 @@
+# Example lingtai-api-pool configuration.
+#
+# No secrets live in this file. Authorization tokens are pulled from environment
+# variables named by `header_env` at request time and are never logged.
+
+[pool]
+# Upstream responses with these statuses trigger failover to another upstream.
+retry_statuses = [429, 500, 502, 503, 504]
+# Maximum total attempts (across upstreams) for a single client request.
+max_attempts = 3
+# How long a failed upstream stays on cooldown before it is eligible again.
+cooldown_seconds = 30.0
+
+[[upstream]]
+id = "primary"
+base_url = "https://api.example-primary.com"
+weight = 2
+timeout_seconds = 60
+# Static headers sent to this upstream.
+headers = { "x-client" = "lingtai-api-pool" }
+# Map an outbound header -> the environment variable holding its value.
+# Set PRIMARY_AUTH in the environment, e.g. export PRIMARY_AUTH="Bearer sk-..."
+header_env = { "authorization" = "PRIMARY_AUTH" }
+
+[[upstream]]
+id = "secondary"
+base_url = "https://api.example-secondary.com"
+weight = 1
+timeout_seconds = 60
+header_env = { "authorization" = "SECONDARY_AUTH" }

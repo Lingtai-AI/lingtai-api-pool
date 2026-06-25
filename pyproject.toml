@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lingtai-api-pool"
+version = "0.1.0"
+description = "Local API upstream pool / virtual REST proxy for LingTai-compatible clients"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "huangzesen" }]
+dependencies = [
+    "starlette>=0.37",
+    "uvicorn>=0.29",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+lingtai-api-pool = "lingtai_api_pool.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lingtai_api_pool"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
