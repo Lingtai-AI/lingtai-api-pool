@@ -1,5 +1,5 @@
-# lingtai-oauth-pool
+# lingtai-api-pool
 
-Local OAuth-backed upstream pool for LingTai-compatible API clients.
+Local API upstream pool for LingTai-compatible clients.
 
-This repository is intentionally generic: the first target is Codex Responses API proxying, but the pool should not be named or structured as Codex-only.
+This repository is intentionally generic: the first target is Codex Responses API proxying, but the pool should not be named or structured as Codex- or OAuth-only.
