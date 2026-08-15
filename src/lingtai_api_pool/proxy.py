@@ -9,8 +9,10 @@ the client.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
+import random
 from typing import Optional
 
 import httpx
@@ -45,6 +47,7 @@ _HOP_BY_HOP = frozenset(
 # transparently decodes content-encoding), so forwarding the original
 # content-encoding/length would mislead the client about the bytes it receives.
 _RESPONSE_DROP = _HOP_BY_HOP | {"content-encoding"}
+_FAILOVER_RETRY_JITTER_SECONDS = 0.1
 
 
 def _filter_headers(
@@ -82,6 +85,11 @@ def _build_outbound_headers(request: Request, upstream: Upstream) -> dict[str, s
 
 def _is_retryable_status(status: int, config: AppConfig) -> bool:
     return status in config.pool.retry_statuses
+
+
+async def _sleep_before_failover() -> None:
+    if _FAILOVER_RETRY_JITTER_SECONDS > 0:
+        await asyncio.sleep(random.uniform(0, _FAILOVER_RETRY_JITTER_SECONDS))
 
 
 class ProxyApp:
@@ -140,9 +148,8 @@ class ProxyApp:
             if result is not None:
                 return result
             # _forward returned None -> upstream failed and was put on cooldown.
-            last_error = JSONResponse(
-                {"error": f"upstream {upstream.id!r} failed"}, status_code=502
-            )
+            last_error = JSONResponse({"error": "upstream failed"}, status_code=502)
+            await _sleep_before_failover()
 
         if not self.pool.healthy() and last_error is None:
             return JSONResponse(
@@ -180,6 +187,9 @@ class ProxyApp:
             self.pool.mark_failed(upstream.id)
             self.pool.release(upstream.id)
             return None
+        except Exception:
+            self.pool.release(upstream.id)
+            raise
 
         if _is_retryable_status(response.status_code, self.config):
             await response.aclose()
@@ -187,7 +197,12 @@ class ProxyApp:
             self.pool.release(upstream.id)
             return None
 
-        return await self._relay(response, upstream, stream)
+        try:
+            return await self._relay(response, upstream, stream)
+        except Exception:
+            await response.aclose()
+            self.pool.release(upstream.id)
+            raise
 
     async def _relay(
         self, response: httpx.Response, upstream: Upstream, stream: bool

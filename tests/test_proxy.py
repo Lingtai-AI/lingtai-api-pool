@@ -4,9 +4,15 @@ import httpx
 import pytest
 from starlette.testclient import TestClient
 
+import lingtai_api_pool.proxy as proxy_module
 from lingtai_api_pool.config import parse_config
 from lingtai_api_pool.proxy import create_app
 from tests.conftest import make_config_data
+
+
+@pytest.fixture(autouse=True)
+def disable_failover_jitter(monkeypatch):
+    monkeypatch.setattr(proxy_module, "_FAILOVER_RETRY_JITTER_SECONDS", 0)
 
 
 def build_client(handler, config=None):
@@ -129,6 +135,17 @@ def test_failover_on_connection_error():
     assert resp.json()["served_by"] == "api.secondary.test"
 
 
+def test_unexpected_send_exception_releases_inflight():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise RuntimeError("unexpected")
+
+    client, app = build_client(handler)
+    with pytest.raises(RuntimeError, match="unexpected"):
+        client.post("/v1/responses", headers={"session_id": "k0"}, content="{}")
+
+    assert app.state.proxy.pool.in_flight("primary") == 0
+
+
 def test_all_upstreams_failing_returns_502():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503)
@@ -136,6 +153,24 @@ def test_all_upstreams_failing_returns_502():
     client, _ = build_client(handler)
     resp = client.post("/v1/responses", headers={"session_id": "k1"}, content="{}")
     assert resp.status_code == 502
+    assert "primary" not in resp.text
+    assert "secondary" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_sleep_before_failover_adds_jitter(monkeypatch):
+    delays = []
+
+    async def fake_sleep(delay):
+        delays.append(delay)
+
+    monkeypatch.setattr(proxy_module, "_FAILOVER_RETRY_JITTER_SECONDS", 0.25)
+    monkeypatch.setattr(proxy_module.random, "uniform", lambda low, high: 0.123)
+    monkeypatch.setattr(proxy_module.asyncio, "sleep", fake_sleep)
+
+    await proxy_module._sleep_before_failover()
+
+    assert delays == [0.123]
 
 
 def test_does_not_retry_indefinitely():

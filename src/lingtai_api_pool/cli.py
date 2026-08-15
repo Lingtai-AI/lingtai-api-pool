@@ -93,6 +93,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     config = load_config(args.config)
     app = create_app(config)
+    if args.host == "0.0.0.0":
+        print(
+            "Warning: binding to 0.0.0.0 exposes this unauthenticated proxy to "
+            "the network; use 127.0.0.1 or add external access controls.",
+            file=sys.stderr,
+        )
     print(
         f"lingtai-api-pool serving {len(config.upstreams)} upstream(s) "
         f"on http://{args.host}:{args.port}"

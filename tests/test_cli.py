@@ -50,3 +50,14 @@ def test_route_is_deterministic(config_file, capsys):
     main(["route", "--config", str(config_file), "--session-id", "sess-1"])
     second = json.loads(capsys.readouterr().out)["upstream_id"]
     assert first == second
+
+
+def test_serve_warns_when_binding_all_interfaces(config_file, monkeypatch, capsys):
+    monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: None)
+
+    rc = main(["serve", "--config", str(config_file), "--host", "0.0.0.0"])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "0.0.0.0" in captured.err
+    assert "unauthenticated proxy" in captured.err
