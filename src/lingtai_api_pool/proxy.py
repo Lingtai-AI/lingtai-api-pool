@@ -53,8 +53,8 @@ def _filter_headers(
 ) -> dict[str, str]:
     out: dict[str, str] = {}
     for raw_name, raw_value in headers:
-        name = raw_name.decode("latin-1")
-        if name.lower() in drop:
+        name = raw_name.decode("latin-1").lower()
+        if name in drop:
             continue
         out[name] = raw_value.decode("latin-1")
     return out
@@ -76,7 +76,7 @@ def _build_outbound_headers(request: Request, upstream: Upstream) -> dict[str, s
     # Per-upstream static + env-sourced headers win over inbound ones. Secret
     # values come from resolve_headers() and are never logged here.
     for name, value in upstream.resolve_headers().items():
-        headers[name] = value
+        headers[name.lower()] = value
     return headers
 
 

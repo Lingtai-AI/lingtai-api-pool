@@ -1,11 +1,10 @@
 import json
 
 import httpx
-import pytest
 from starlette.testclient import TestClient
 
 from lingtai_api_pool.config import parse_config
-from lingtai_api_pool.proxy import create_app
+from lingtai_api_pool.proxy import _filter_headers, create_app
 from tests.conftest import make_config_data
 
 
@@ -80,6 +79,21 @@ def test_hop_by_hop_headers_stripped():
     # are not forwarded from the client, so we assert on te/upgrade instead.)
     assert "te" not in keys
     assert "upgrade" not in keys
+
+
+def test_header_filter_collapses_case_insensitive_duplicates():
+    headers = _filter_headers(
+        [
+            (b"Authorization", b"Bearer client"),
+            (b"authorization", b"Bearer configured"),
+            (b"X-Client", b"lingtai"),
+        ]
+    )
+
+    assert headers == {
+        "authorization": "Bearer configured",
+        "x-client": "lingtai",
+    }
 
 
 def test_sticky_key_routes_consistently():
