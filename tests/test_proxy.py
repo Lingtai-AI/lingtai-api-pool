@@ -61,6 +61,37 @@ def test_query_string_preserved():
     assert "limit=5" in resp.json()["q"]
 
 
+def test_upstream_base_path_prefix_preserved():
+    data = make_config_data()
+    data["upstream"] = [
+        {
+            "id": "prefixed",
+            "base_url": "https://api.primary.test/base",
+        }
+    ]
+    config = parse_config(data)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"path": request.url.path})
+
+    client, _ = build_client(handler, config=config)
+    resp = client.post("/v1/responses", content="{}")
+
+    assert resp.status_code == 200
+    assert resp.json()["path"] == "/base/v1/responses"
+
+
+def test_rejects_parent_path_escape():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("invalid path must not reach upstream")
+
+    client, _ = build_client(handler)
+    resp = client.post("/%2e%2e/v2/responses", content="{}")
+
+    assert resp.status_code == 400
+    assert resp.json() == {"error": "invalid path"}
+
+
 def test_hop_by_hop_headers_stripped():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(

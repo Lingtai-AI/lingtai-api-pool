@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import contextlib
 import json
+import posixpath
 from typing import Optional
+from urllib.parse import unquote
 
 import httpx
 from starlette.applications import Starlette
@@ -80,6 +82,29 @@ def _build_outbound_headers(request: Request, upstream: Upstream) -> dict[str, s
     return headers
 
 
+def _has_parent_path_reference(path: str) -> bool:
+    return any(part == ".." for part in unquote(path).split("/"))
+
+
+def _join_upstream_path(base_url: str, request_path: str) -> str:
+    base_path = httpx.URL(base_url).path
+    joined = posixpath.normpath(
+        "/" + "/".join(part.strip("/") for part in (base_path, request_path) if part)
+    )
+    return joined if joined != "/." else "/"
+
+
+def _build_upstream_url(upstream: Upstream, request: Request) -> httpx.URL:
+    if _has_parent_path_reference(request.url.path):
+        raise ValueError("invalid path")
+    url = httpx.URL(upstream.base_url).copy_with(
+        path=_join_upstream_path(upstream.base_url, request.url.path)
+    )
+    if request.url.query:
+        url = url.copy_with(query=request.url.query.encode("ascii"))
+    return url
+
+
 def _is_retryable_status(status: int, config: AppConfig) -> bool:
     return status in config.pool.retry_statuses
 
@@ -117,6 +142,9 @@ class ProxyApp:
         return select_least_inflight(candidates, in_flight)
 
     async def handle(self, request: Request) -> Response:
+        if _has_parent_path_reference(request.url.path):
+            return JSONResponse({"error": "invalid path"}, status_code=400)
+
         body = await request.body()
         sticky_key = extract_sticky_key(request.headers, body)
         stream = _wants_stream(body)
@@ -161,9 +189,7 @@ class ProxyApp:
     ) -> Optional[Response]:
         """Forward to one upstream. Returns a Response on success, or None if the
         upstream failed in a retryable way (already marked on cooldown)."""
-        url = httpx.URL(upstream.base_url + request.url.path)
-        if request.url.query:
-            url = url.copy_with(query=request.url.query.encode("ascii"))
+        url = _build_upstream_url(upstream, request)
         headers = _build_outbound_headers(request, upstream)
         req = self.client.build_request(
             request.method,
