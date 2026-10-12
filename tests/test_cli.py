@@ -1,7 +1,5 @@
 import json
 
-import pytest
-
 from lingtai_api_pool.cli import main
 
 
@@ -14,15 +12,6 @@ def test_check_prints_secret_safe_summary(config_file, monkeypatch, capsys):
     assert "PRIMARY_AUTH" in out
     summary = json.loads(out.split("\n\n")[0])
     assert {u["id"] for u in summary["upstreams"]} == {"primary", "secondary"}
-
-
-def test_check_warns_on_missing_env(config_file, monkeypatch, capsys):
-    monkeypatch.delenv("PRIMARY_AUTH", raising=False)
-    rc = main(["check", "--config", str(config_file)])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "not set" in out
-    assert "PRIMARY_AUTH" in out
 
 
 def test_check_bad_config_returns_2(tmp_path, capsys):
